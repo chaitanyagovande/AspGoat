@@ -55,5 +55,5 @@ jobs:
       - template: azure-devops/frogbot-repo-scan-NuGet.yml@jfrog-shared-actions
         parameters:
           frogbotVersion: "2.31.0"
-          solutionName: "AspGoat.csproj"   # no .sln in this repo — target the .csproj directly
+          solutionName: "AspGoat.sln"
           sdkVersion: "8.0.x"
