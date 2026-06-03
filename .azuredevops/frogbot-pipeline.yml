@@ -1,0 +1,51 @@
+# Frogbot Repository Scan — Azure DevOps Pipeline
+#
+# Template source: github.com/chaitanyagovande/jfrog-shared-actions
+#
+# Prerequisites:
+#   1. GitHub service connection in ADO Project Settings > Service connections
+#      Name it "github-jfrog-shared-actions" (or update endpoint: below to match)
+#   2. Variable group "Jfrog-FrogBot" in Pipelines > Library containing:
+#       JF_URL            JFrog Platform URL (e.g. https://myorg.jfrog.io)
+#       JF_ACCESS_TOKEN   JFrog access token                          [mark secret]
+#       JF_GIT_TOKEN      ADO PAT with Code: Read & Write scope       [mark secret]
+#       JF_RELEASES_REPO  Artifactory remote repo key proxying releases.jfrog.io
+#   3. Variable group must be linked to this pipeline in Pipelines > Library > [group] > Pipeline permissions
+
+schedules:
+  - cron: '0 0 * * *'
+    displayName: Daily midnight Frogbot scan
+    branches:
+      include:
+        - main
+    always: true
+
+pr: none
+trigger: none
+
+pool:
+  name: OnPrem
+  demands:
+    - agent.name -equals Billing_Build_1
+
+variables:
+  - group: Jfrog-FrogBot
+
+resources:
+  repositories:
+    - repository: jfrog-shared-actions
+      type: github
+      name: chaitanyagovande/jfrog-shared-actions
+      endpoint: github-jfrog-shared-actions   # must match the service connection name in ADO
+      ref: refs/heads/main
+
+jobs:
+  - job: FrogbotScanRepository
+    displayName: 'Frogbot Scan Repository'
+    timeoutInMinutes: 30
+    steps:
+      - template: azure-devops/frogbot-repo-scan-NuGet.yml@jfrog-shared-actions
+        parameters:
+          frogbotVersion: "2.31.0"
+          solutionName: "AspGoat.csproj"   # no .sln in this repo — target the .csproj directly
+          sdkVersion: "8.0.x"
