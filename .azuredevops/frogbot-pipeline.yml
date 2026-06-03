@@ -23,13 +23,21 @@ schedules:
 pr: none
 trigger: none
 
+# ── OPTION A: Microsoft-hosted agent (use if Artifactory is publicly reachable) ──
 pool:
-  name: OnPrem
-  demands:
-    - agent.name -equals Billing_Build_1
+  vmImage: windows-latest
+# Required because the template uses frogbot.exe (Windows binary) and PowerShell@2.
+
+# ── OPTION B: Self-hosted agent (use if Artifactory is behind a firewall/VPN) ───
+# Create the pool first: Project Settings → Agent pools → Add pool
+# Then register an agent in it: https://learn.microsoft.com/azure/devops/pipelines/agents/windows-agent
+# pool:
+#   name: <your-pool-name>
+#   demands:
+#     - Agent.OS -equals Windows_NT
 
 variables:
-  - group: Jfrog-FrogBot
+  - group: CG-ASPGoat-Frogbot
 
 resources:
   repositories:
