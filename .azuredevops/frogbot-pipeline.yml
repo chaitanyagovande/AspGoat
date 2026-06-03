@@ -57,3 +57,5 @@ jobs:
           frogbotVersion: "2.31.0"
           solutionName: "AspGoat.sln"
           sdkVersion: "8.0.x"
+          gitOwner: "chaitanyagovande"      # required
+          gitRepo: "AspGoat"               # optional if Build.Repository.Name is owner/repo
