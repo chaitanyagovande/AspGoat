@@ -1,0 +1,39 @@
+# Frogbot Scan Repository - Azure DevOps Pipeline
+# Triggered on schedule to scan the repository for vulnerabilities
+
+schedules:
+  - cron: '0 0 * * *'
+    displayName: Daily midnight scan
+    branches:
+      include:
+        - main
+
+# Disable PR and push triggers - this pipeline is for scheduled scans only
+pr: none
+trigger: none
+
+pool:
+  vmImage: windows-latest
+
+variables:
+  - group: CG-ASPGoat-Frogbot
+
+resources:
+  repositories:
+    - repository: jfrog-shared-actions
+      type: github
+      name: chaitanyagovande/jfrog-shared-actions
+      endpoint: github-jfrog-shared-actions   # must match the service connection name in ADO
+      ref: refs/heads/main
+
+jobs:
+  - job: FrogbotScanRepository
+    displayName: 'Frogbot Scan Repository'
+    timeoutInMinutes: 30
+    steps:
+      - template: azure-devops/frogbotv3-repo-scan-NuGet.yml@jfrog-shared-actions
+        parameters:
+          frogbotVersion: "3.2.2"
+          solutionName: "AspGoat.sln"
+          gitOwner: "chaitanyagovande"      # required
+          gitRepo: "AspGoat"
