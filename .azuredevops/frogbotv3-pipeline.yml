@@ -33,7 +33,7 @@ jobs:
     steps:
       - template: azure-devops/frogbotv3-repo-scan-NuGet.yml@jfrog-shared-actions
         parameters:
-          frogbotVersion: "3.2.0"
+          frogbotVersion: "3.2.2"
           solutionName: "AspGoat.sln"
           gitOwner: "chaitanyagovande"      # required
           gitRepo: "AspGoat"
