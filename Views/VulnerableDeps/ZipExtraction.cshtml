@@ -1,0 +1,107 @@
+@{
+    ViewData["Title"] = "Zip Slip — Path Traversal Demo";
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>@ViewData["Title"]</title>
+    <link rel="stylesheet" href="~/css/app.css" />
+</head>
+<body>
+
+    <h1 style="text-align: center; margin-bottom: 40px;">Zip Slip — Path Traversal Demo</h1>
+
+    <div class="container">
+        <div class="box">
+            <h2>Can you write a file outside the extraction directory?</h2>
+            <p>Upload a <code>.zip</code> archive. The server extracts it using SharpZipLib without
+               sanitising entry names — a zip-slip payload can escape the output directory.</p>
+            <form method="post" enctype="multipart/form-data" action="/VulnerableDeps/ZipExtraction">
+                <input type="file" name="archive" accept=".zip" style="margin-bottom:12px;" /><br />
+                <button type="submit" class="btn btn-primary">Extract</button>
+            </form>
+        </div>
+
+        <div class="box">
+            <h2>Secure the Code</h2>
+            <p>This endpoint is vulnerable to <strong>CVE-2022-48208 (SharpZipLib &lt; 1.4.2)</strong>.</p>
+            <p>When <code>entry.Name</code> contains <code>../../</code> sequences and is passed directly
+               to <code>Path.Combine</code>, files are written outside the intended output directory
+               (Zip Slip attack).</p>
+            <button class="btn btn-outline-dark mt-2" onclick="openCodePopup()">Identify Vulnerability</button>
+        </div>
+    </div>
+
+    @if (ViewData["Result"] != null)
+    {
+        <div style="text-align: center; margin-top: 25px">
+            <pre style="text-align:left; display:inline-block; background:#f4f4f4; padding:16px; border-radius:6px; min-width:400px;">@ViewData["Result"]</pre>
+        </div>
+    }
+
+    <!-- Code review modal -->
+    <div id="codeModal" class="modal">
+        <div class="modal-content">
+            <h3>Analyze the Code</h3>
+
+            <div class="popup-line"><input type="checkbox" class="code-checkbox" onchange="checkVulnerability(this, 1)">
+            <span>using var zip = new ZipFile(tempArchive);</span>
+            </div>
+
+            <div class="popup-line"><input type="checkbox" class="code-checkbox" onchange="checkVulnerability(this, 2)">
+            <span>var destPath = Path.Combine(outputDir, entry.Name);</span>
+            </div>
+
+            <div class="popup-line"><input type="checkbox" class="code-checkbox" onchange="checkVulnerability(this, 3)">
+            <span>using var input = zip.GetInputStream(entry);</span>
+            </div>
+
+            <br />
+            <button onclick="closeCodePopup()">Close</button>
+        </div>
+    </div>
+
+    <!-- Fix modal -->
+    <div id="diffModal" class="diff-modal">
+        <div class="diff-content">
+            <h3>Secure Version</h3>
+
+            <div class="diff-line removed">- var destPath = Path.Combine(outputDir, entry.Name);</div>
+            <div class="diff-line added">+ // Normalise and validate the resolved path stays within outputDir</div>
+            <div class="diff-line added">+ var destPath = Path.GetFullPath(Path.Combine(outputDir, entry.Name));</div>
+            <div class="diff-line added">+ if (!destPath.StartsWith(Path.GetFullPath(outputDir) + Path.DirectorySeparatorChar))</div>
+            <div class="diff-line added">+     throw new InvalidOperationException($"Zip slip detected: {entry.Name}");</div>
+            <p style="margin-top:12px; font-size:0.9em;">Or upgrade to SharpZipLib &ge; 1.4.2 which
+               adds <code>ZipFile.ExtractZip</code> overloads that perform this check internally.</p>
+
+            <br />
+            <button onclick="closeDiffPopup()">Close</button>
+        </div>
+    </div>
+
+    <h6 style="margin: 25px;">More Information:</h6>
+    <ul>
+        <li><a href="https://nvd.nist.gov/vuln/detail/CVE-2022-48208">NVD — CVE-2022-48208</a></li>
+        <li><a href="https://snyk.io/research/zip-slip-vulnerability">Snyk — Zip Slip research</a></li>
+        <li><a href="https://owasp.org/www-community/attacks/Path_Traversal">OWASP — Path Traversal</a></li>
+    </ul>
+
+    <script>
+        function openCodePopup()  { document.getElementById('codeModal').style.display = 'flex'; }
+        function closeCodePopup() { document.getElementById('codeModal').style.display = 'none'; }
+        function closeDiffPopup() { document.getElementById('diffModal').style.display = 'none'; }
+
+        const correctLines = [2];
+        function checkVulnerability(cb, line) {
+            if (!cb.checked) return;
+            if (correctLines.includes(line)) {
+                document.getElementById('codeModal').style.display = 'none';
+                document.getElementById('diffModal').style.display  = 'flex';
+            }
+        }
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,114 @@
+@{
+    ViewData["Title"] = "YAML Deserialization Demo";
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>@ViewData["Title"]</title>
+    <link rel="stylesheet" href="~/css/app.css" />
+</head>
+<body>
+
+    <h1 style="text-align: center; margin-bottom: 40px;">YAML Deserialization Demo</h1>
+
+    <div class="container">
+        <div class="box">
+            <h2>Can you make AspGoat deserialize an arbitrary .NET type?</h2>
+            <p>Submit a YAML payload below. The server deserializes it without type restrictions.</p>
+            <textarea id="yamlInput" rows="6" style="width:100%; font-family:monospace; padding:8px;"
+                placeholder="key: value&#10;list:&#10;  - item1&#10;  - item2"></textarea>
+            <br /><br />
+            <button class="btn btn-primary" onclick="submitYaml()">Deserialize</button>
+        </div>
+
+        <div class="box">
+            <h2>Secure the Code</h2>
+            <p>This endpoint is vulnerable to <strong>CVE-2022-25578 (YamlDotNet &lt; 11.2.1)</strong>.</p>
+            <p>An unconstrained <code>DeserializerBuilder</code> allows YAML type tags (e.g. <code>!!System.Diagnostics.Process</code>)
+               to instantiate arbitrary .NET types, enabling Denial of Service or Remote Code Execution.</p>
+            <button class="btn btn-outline-dark mt-2" onclick="openCodePopup()">Identify Vulnerability</button>
+        </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 25px">
+        <pre id="result" style="text-align:left; display:inline-block; background:#f4f4f4; padding:16px; border-radius:6px; min-width:400px;">@ViewData["Result"]</pre>
+    </div>
+
+    <!-- Code review modal -->
+    <div id="codeModal" class="modal">
+        <div class="modal-content">
+            <h3>Analyze the Code</h3>
+
+            <div class="popup-line"><input type="checkbox" class="code-checkbox" onchange="checkVulnerability(this, 1)">
+            <span>var deserializer = new DeserializerBuilder().Build();</span>
+            </div>
+
+            <div class="popup-line"><input type="checkbox" class="code-checkbox" onchange="checkVulnerability(this, 2)">
+            <span>var result = deserializer.Deserialize&lt;object&gt;(yamlInput ?? "");</span>
+            </div>
+
+            <br />
+            <button onclick="closeCodePopup()">Close</button>
+        </div>
+    </div>
+
+    <!-- Fix modal -->
+    <div id="diffModal" class="diff-modal">
+        <div class="diff-content">
+            <h3>Secure Version</h3>
+
+            <div class="diff-line removed">- var deserializer = new DeserializerBuilder().Build();</div>
+            <div class="diff-line added">+ var deserializer = new DeserializerBuilder()</div>
+            <div class="diff-line added">+     .WithNodeTypeResolver(new SafeSchemaNodeTypeResolver())</div>
+            <div class="diff-line added">+     .Build();</div>
+            <p style="margin-top:12px; font-size:0.9em;">Or upgrade to YamlDotNet &ge; 11.2.1 which adds a
+               <code>DisableAliases()</code> builder method and removes dangerous type tag support by default.</p>
+
+            <br />
+            <button onclick="closeDiffPopup()">Close</button>
+        </div>
+    </div>
+
+    <h6 style="margin: 25px;">More Information:</h6>
+    <ul>
+        <li><a href="https://nvd.nist.gov/vuln/detail/CVE-2022-25578">NVD — CVE-2022-25578</a></li>
+        <li><a href="https://github.com/aaubry/YamlDotNet/releases/tag/v11.2.1">YamlDotNet 11.2.1 release notes</a></li>
+        <li><a href="https://owasp.org/www-community/vulnerabilities/Deserialization_of_untrusted_data">OWASP — Insecure Deserialization</a></li>
+    </ul>
+
+    <script>
+        function submitYaml() {
+            const yaml = document.getElementById('yamlInput').value;
+            fetch('/VulnerableDeps/YamlDeserialization', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'yamlInput=' + encodeURIComponent(yaml)
+            })
+            .then(r => r.text())
+            .then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const pre = doc.getElementById('result');
+                document.getElementById('result').textContent = pre ? pre.textContent : '(no result)';
+            })
+            .catch(err => document.getElementById('result').textContent = 'Error: ' + err);
+        }
+
+        function openCodePopup()  { document.getElementById('codeModal').style.display = 'flex'; }
+        function closeCodePopup() { document.getElementById('codeModal').style.display = 'none'; }
+        function closeDiffPopup() { document.getElementById('diffModal').style.display = 'none'; }
+
+        const correctLines = [1, 2];
+        function checkVulnerability(cb, line) {
+            if (!cb.checked) return;
+            if (correctLines.includes(line)) {
+                document.getElementById('codeModal').style.display = 'none';
+                document.getElementById('diffModal').style.display  = 'flex';
+            }
+        }
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,128 @@
+@{
+    ViewData["Title"] = "Log Injection via log4net Demo";
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>@ViewData["Title"]</title>
+    <link rel="stylesheet" href="~/css/app.css" />
+</head>
+<body>
+
+    <h1 style="text-align: center; margin-bottom: 40px;">Log Injection via log4net Demo</h1>
+
+    <div class="container">
+        <div class="box">
+            <h2>Can you forge a log entry or inject a newline into the logs?</h2>
+            <p>Enter a message. The server logs it directly with <strong>log4net</strong> without
+               sanitisation, enabling log injection (fake log lines via CRLF).</p>
+            <div style="display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap;">
+                <input id="msgInput" type="text" style="flex:1; padding:8px;"
+                    placeholder="Normal message or CRLF payload, e.g. hello%0A[ERROR] fake-entry" />
+                <select id="levelSelect" style="padding:8px;">
+                    <option value="info">INFO</option>
+                    <option value="warn">WARN</option>
+                    <option value="error">ERROR</option>
+                </select>
+                <button class="btn btn-primary" onclick="sendLog()">Log it</button>
+            </div>
+        </div>
+
+        <div class="box">
+            <h2>Secure the Code</h2>
+            <p>This endpoint is vulnerable to <strong>CVE-2018-1285 (log4net &lt; 2.0.10)</strong>.</p>
+            <p>log4net's <code>XmlConfigurator</code> parses XML config with DTD processing enabled,
+               exposing an XXE attack surface. Additionally, logging unsanitised user data enables
+               <strong>log injection</strong>: newlines in the message can forge additional log lines
+               and tamper with audit trails.</p>
+            <button class="btn btn-outline-dark mt-2" onclick="openCodePopup()">Identify Vulnerability</button>
+        </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 25px">
+        <h3 id="msg">@ViewData["Result"]</h3>
+    </div>
+
+    <!-- Code review modal -->
+    <div id="codeModal" class="modal">
+        <div class="modal-content">
+            <h3>Analyze the Code</h3>
+
+            <div class="popup-line"><input type="checkbox" class="code-checkbox" onchange="checkVulnerability(this, 1)">
+            <span>private static readonly ILog _log = LogManager.GetLogger(typeof(...));</span>
+            </div>
+
+            <div class="popup-line"><input type="checkbox" class="code-checkbox" onchange="checkVulnerability(this, 2)">
+            <span>_log.Info(message); // message is raw user input</span>
+            </div>
+
+            <div class="popup-line"><input type="checkbox" class="code-checkbox" onchange="checkVulnerability(this, 3)">
+            <span>_log.Warn(message);</span>
+            </div>
+
+            <div class="popup-line"><input type="checkbox" class="code-checkbox" onchange="checkVulnerability(this, 4)">
+            <span>_log.Error(message);</span>
+            </div>
+
+            <br />
+            <button onclick="closeCodePopup()">Close</button>
+        </div>
+    </div>
+
+    <!-- Fix modal -->
+    <div id="diffModal" class="diff-modal">
+        <div class="diff-content">
+            <h3>Secure Version</h3>
+
+            <div class="diff-line removed">- _log.Info(message);</div>
+            <div class="diff-line added">+ // Strip CR/LF to prevent log injection</div>
+            <div class="diff-line added">+ var sanitised = message.Replace("\r", "").Replace("\n", " ");</div>
+            <div class="diff-line added">+ _log.Info(sanitised);</div>
+            <p style="margin-top:12px; font-size:0.9em;">Also upgrade to log4net &ge; 2.0.10 which
+               disables DTD processing in <code>XmlConfigurator</code> by default, fixing the XXE vector.</p>
+
+            <br />
+            <button onclick="closeDiffPopup()">Close</button>
+        </div>
+    </div>
+
+    <h6 style="margin: 25px;">More Information:</h6>
+    <ul>
+        <li><a href="https://nvd.nist.gov/vuln/detail/CVE-2018-1285">NVD — CVE-2018-1285</a></li>
+        <li><a href="https://logging.apache.org/log4net/">log4net official documentation</a></li>
+        <li><a href="https://owasp.org/www-community/attacks/Log_Injection">OWASP — Log Injection</a></li>
+    </ul>
+
+    <script>
+        function sendLog() {
+            const msg   = document.getElementById('msgInput').value;
+            const level = document.getElementById('levelSelect').value;
+            fetch(`/VulnerableDeps/LogActivity?message=${encodeURIComponent(msg)}&level=${level}`)
+                .then(r => r.text())
+                .then(html => {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const h3  = doc.getElementById('msg');
+                    document.getElementById('msg').textContent = h3 ? h3.textContent : '(sent)';
+                })
+                .catch(err => document.getElementById('msg').textContent = 'Error: ' + err);
+        }
+
+        function openCodePopup()  { document.getElementById('codeModal').style.display = 'flex'; }
+        function closeCodePopup() { document.getElementById('codeModal').style.display = 'none'; }
+        function closeDiffPopup() { document.getElementById('diffModal').style.display = 'none'; }
+
+        const correctLines = [2, 3, 4];
+        function checkVulnerability(cb, line) {
+            if (!cb.checked) return;
+            if (correctLines.includes(line)) {
+                document.getElementById('codeModal').style.display = 'none';
+                document.getElementById('diffModal').style.display  = 'flex';
+            }
+        }
+    </script>
+
+</body>
+</html>
