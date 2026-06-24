@@ -6,7 +6,7 @@ schedules:
     displayName: Daily midnight scan
     branches:
       include:
-        - cust-sel
+        - main
 
 # Disable PR and push triggers - this pipeline is for scheduled scans only
 pr: none
