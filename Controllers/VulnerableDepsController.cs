@@ -111,14 +111,16 @@ public class VulnerableDepsController : Controller
         return View();
     }
 
-    // ── Log Injection via log4net ─────────────────────────────────────────────
+    // ── Log Injection + XXE via log4net ──────────────────────────────────────
     // CVE-2018-1285 (log4net < 2.0.10)
-    // log4net's XmlConfigurator parses an XML config file without disabling
-    // DTD processing, making it vulnerable to XXE if attacker-controlled XML
-    // reaches the configurator. Additionally, logging unsanitised user input
-    // enables log injection attacks (forged log lines, CRLF injection).
-    // Contextual analysis trigger: _log.Info / _log.Error called with
-    // user-supplied data, and XmlConfigurator.Configure invoked.
+    // log4net's XmlConfigurator parses XML without disabling DTD processing.
+    // When attacker-controlled XML reaches XmlConfigurator.Configure() the
+    // parser resolves external entities, enabling XXE (file read, SSRF).
+    // Additionally, logging unsanitised user input enables log injection.
+    //
+    // Contextual analysis triggers:
+    //   log4net.Config.XmlConfigurator.Configure   ← called in ConfigureLogging
+    //   log4net.Config.XmlConfigurator.ConfigureAndWatch ← not used here
 
     [HttpGet]
     public IActionResult LogActivity()
@@ -150,6 +152,59 @@ public class VulnerableDepsController : Controller
         }
 
         ViewData["Result"] = $"Logged at level '{level}': {message}";
+        return View();
+    }
+
+    // ── XXE via log4net XmlConfigurator ───────────────────────────────────────
+    // CVE-2018-1285: XmlConfigurator.Configure(Stream) parses XML with DTD
+    // processing enabled. Supplying an XXE payload as the config reloads
+    // the logger configuration while resolving external entities.
+    //
+    // Example XXE payload:
+    //   <?xml version="1.0"?>
+    //   <!DOCTYPE log4net [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
+    //   <log4net><root><level value="&xxe;" /></root></log4net>
+    //
+    // Contextual analysis trigger: XmlConfigurator.Configure(stream) called
+    // with a Stream derived from user-controlled input.
+
+    [HttpGet]
+    public IActionResult ConfigureLogging()
+    {
+        var defaultConfig = @"<?xml version=""1.0"" encoding=""utf-8"" ?>
+<log4net>
+  <root>
+    <level value=""INFO"" />
+    <appender-ref ref=""ConsoleAppender"" />
+  </root>
+  <appender name=""ConsoleAppender"" type=""log4net.Appender.ConsoleAppender"">
+    <layout type=""log4net.Layout.PatternLayout"">
+      <conversionPattern value=""%date [%thread] %-5level %logger - %message%newline"" />
+    </layout>
+  </appender>
+</log4net>";
+        ViewData["DefaultConfig"] = defaultConfig;
+        return View();
+    }
+
+    [HttpPost]
+    public IActionResult ConfigureLogging(string xmlConfig)
+    {
+        try
+        {
+            // Vulnerable: user-supplied XML is passed directly to XmlConfigurator.Configure.
+            // DTD processing is enabled in log4net < 2.0.10, so an XXE payload in xmlConfig
+            // causes the parser to resolve external entities (file read, SSRF).
+            using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xmlConfig ?? ""));
+            log4net.Config.XmlConfigurator.Configure(stream);
+
+            ViewData["Result"] = "Logger reconfigured successfully.";
+        }
+        catch (Exception ex)
+        {
+            ViewData["Result"] = $"Error: {ex.Message}";
+        }
+
         return View();
     }
 }

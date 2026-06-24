@@ -1,0 +1,130 @@
+@{
+    ViewData["Title"] = "XXE via log4net XmlConfigurator Demo";
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>@ViewData["Title"]</title>
+    <link rel="stylesheet" href="~/css/app.css" />
+</head>
+<body>
+
+    <h1 style="text-align: center; margin-bottom: 40px;">XXE via log4net XmlConfigurator Demo</h1>
+
+    <div class="container">
+        <div class="box">
+            <h2>Can you read a server-side file through log4net's XML parser?</h2>
+            <p>This endpoint reloads the logger configuration from XML you supply.
+               Because log4net &lt; 2.0.10 parses XML <strong>with DTD processing enabled</strong>,
+               an XXE payload causes the parser to resolve <code>&amp;xxe;</code> as an external entity
+               (file read or SSRF).</p>
+            <p>Try submitting the XXE payload below:</p>
+            <textarea id="xmlInput" rows="10" style="width:100%; font-family:monospace; padding:8px;">@ViewData["DefaultConfig"]</textarea>
+            <br />
+            <details style="margin: 10px 0; font-size: 0.9em;">
+                <summary style="cursor:pointer; color:#5a2a9c; font-weight:bold;">Show XXE payload example</summary>
+                <pre style="background:#fff3cd; padding:10px; border-radius:4px; margin-top:8px;">&lt;?xml version="1.0"?&gt;
+&lt;!DOCTYPE log4net [&lt;!ENTITY xxe SYSTEM "file:///etc/passwd"&gt;]&gt;
+&lt;log4net&gt;
+  &lt;root&gt;
+    &lt;level value="&amp;xxe;" /&gt;
+  &lt;/root&gt;
+&lt;/log4net&gt;</pre>
+            </details>
+            <button class="btn btn-primary" onclick="submitConfig()">Reload Logger Config</button>
+        </div>
+
+        <div class="box">
+            <h2>Secure the Code</h2>
+            <p>This endpoint is vulnerable to <strong>CVE-2018-1285 (log4net &lt; 2.0.10)</strong>.</p>
+            <p><code>XmlConfigurator.Configure(stream)</code> is called with a <code>Stream</code>
+               constructed from user-controlled input. The XML parser resolves external entity
+               references defined in a DTD, enabling attackers to read local files or make
+               server-side requests.</p>
+            <button class="btn btn-outline-dark mt-2" onclick="openCodePopup()">Identify Vulnerability</button>
+        </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 25px">
+        <h3 id="msg">@ViewData["Result"]</h3>
+    </div>
+
+    <!-- Code review modal -->
+    <div id="codeModal" class="modal">
+        <div class="modal-content">
+            <h3>Analyze the Code</h3>
+
+            <div class="popup-line"><input type="checkbox" class="code-checkbox" onchange="checkVulnerability(this, 1)">
+            <span>using var stream = new MemoryStream(Encoding.UTF8.GetBytes(xmlConfig));</span>
+            </div>
+
+            <div class="popup-line"><input type="checkbox" class="code-checkbox" onchange="checkVulnerability(this, 2)">
+            <span>log4net.Config.XmlConfigurator.Configure(stream); // ← vulnerable call</span>
+            </div>
+
+            <br />
+            <button onclick="closeCodePopup()">Close</button>
+        </div>
+    </div>
+
+    <!-- Fix modal -->
+    <div id="diffModal" class="diff-modal">
+        <div class="diff-content">
+            <h3>Secure Version</h3>
+
+            <div class="diff-line removed">- log4net.Config.XmlConfigurator.Configure(stream);</div>
+            <div class="diff-line added">+ // Option 1: upgrade to log4net >= 2.0.10 (DTD disabled by default)</div>
+            <div class="diff-line added">+ // Option 2: never accept logger configuration from user input</div>
+            <div class="diff-line added">+ // Option 3: pre-parse with a hardened XmlReader before passing</div>
+            <div class="diff-line added">+ var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit };</div>
+            <div class="diff-line added">+ using var reader = XmlReader.Create(stream, settings);</div>
+            <div class="diff-line added">+ // validate schema, then pass reader to your own config loader</div>
+
+            <br />
+            <button onclick="closeDiffPopup()">Close</button>
+        </div>
+    </div>
+
+    <h6 style="margin: 25px;">More Information:</h6>
+    <ul>
+        <li><a href="https://nvd.nist.gov/vuln/detail/CVE-2018-1285">NVD — CVE-2018-1285</a></li>
+        <li><a href="https://github.com/advisories/GHSA-2cwj-8chv-9pp9">GitHub Advisory GHSA-2cwj-8chv-9pp9</a></li>
+        <li><a href="https://owasp.org/www-community/vulnerabilities/XML_External_Entity_(XXE)_Processing">OWASP — XXE</a></li>
+    </ul>
+
+    <script>
+        function submitConfig() {
+            const xml = document.getElementById('xmlInput').value;
+            fetch('/VulnerableDeps/ConfigureLogging', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'xmlConfig=' + encodeURIComponent(xml)
+            })
+            .then(r => r.text())
+            .then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const h3 = doc.getElementById('msg');
+                document.getElementById('msg').textContent = h3 ? h3.textContent : '(sent)';
+            })
+            .catch(err => document.getElementById('msg').textContent = 'Error: ' + err);
+        }
+
+        function openCodePopup()  { document.getElementById('codeModal').style.display = 'flex'; }
+        function closeCodePopup() { document.getElementById('codeModal').style.display = 'none'; }
+        function closeDiffPopup() { document.getElementById('diffModal').style.display = 'none'; }
+
+        const correctLines = [2];
+        function checkVulnerability(cb, line) {
+            if (!cb.checked) return;
+            if (correctLines.includes(line)) {
+                document.getElementById('codeModal').style.display = 'none';
+                document.getElementById('diffModal').style.display  = 'flex';
+            }
+        }
+    </script>
+
+</body>
+</html>
